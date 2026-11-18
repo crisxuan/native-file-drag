@@ -1,8 +1,10 @@
-# Windows File Drag 0.1.0
+# Native File Drag 0.2.0
 
-Preview build. The automated tests exercise Windows paths and mock the Electron drag interface. A native drop into File Explorer or another Windows desktop application still needs to be verified.
+One preview build for Obsidian desktop 1.15.1 or later on macOS and Windows.
 
-- Hold Ctrl to drag a file or a selection from Obsidian's Files pane into a Windows app.
-- Choose a different modifier or enable drag without a modifier.
-- Use English by default or switch to Simplified Chinese in the plugin settings.
-- Targets Obsidian desktop 1.15.1 or later on Windows.
+- Hold Option on macOS or Ctrl on Windows to drag an original file from the file explorer. Multiple selected files can be dragged together.
+- Set a different modifier or enable drag without a modifier in the plugin settings.
+- Use English by default or switch to Simplified Chinese.
+- The combined build uses the plugin ID `native-file-drag`. Disable the previous Windows-only or local macOS preview before you enable this build, then reapply any custom settings.
+
+The automated tests exercise both operating systems and simulate Electron drag calls. Native drop behavior depends on the desktop host and receiving application.

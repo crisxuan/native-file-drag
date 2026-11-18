@@ -1,31 +1,29 @@
-# Windows File Drag
+# Native File Drag
 
-Drag a Markdown note or attachment from Obsidian's Files pane into a Windows app. Hold **Ctrl** before dragging to give the receiving app the file on disk. You can also drag several selected files together.
+Drag Markdown notes and attachments from Obsidian's file explorer to Finder, File Explorer, and other apps that accept files. Hold **Option** on macOS or **Ctrl** on Windows before you drag. To drag several files, select them first and drag one of the selected files.
 
 [简体中文说明](README.zh-CN.md)
 
-**Preview:** Native drag and drop into a Windows desktop app still needs an end-to-end check. See the [release](https://github.com/crisxuan/windows-file-drag/releases/tag/0.1.0) for the install package.
+## Install the preview
 
-## Install the trial build
+1. Download the [manual install ZIP](../../releases/latest) and extract the `native-file-drag` folder into `<vault>/.obsidian/plugins/`. The folder contains `main.js` and `manifest.json`.
+2. In Obsidian desktop 1.15.1 or later, open **Settings → Community plugins**, refresh the installed plugins list, and enable **Native File Drag**.
+3. If you installed the Windows File Drag or local macOS preview, disable it before enabling Native File Drag. Reapply any custom drag trigger in the new plugin's settings.
 
-1. In Obsidian on Windows, open the vault you want to use. This build targets Obsidian desktop 1.15.1 or later.
-2. Place `main.js` and `manifest.json` in `<vault>/.obsidian/plugins/windows-file-drag/`. The manual install ZIP already contains this `windows-file-drag` folder.
-3. In **Settings → Community plugins**, refresh the installed plugins list and enable **Windows File Drag**.
+## Settings
 
-## Use
-
-- Hold **Ctrl** and start dragging a file from the Files pane. Drop it in File Explorer or in an application that accepts files. For multiple files, select them first, then Ctrl-drag one of the selected items.
-- Use **Settings → Windows File Drag → Language** to switch between **English** and **简体中文**. English is the default. Settings and notifications follow the selection immediately. The Community directory and the installed plugin name use the English manifest.
-- **Drag trigger** can be changed to Alt, Shift, or any drag. The Windows drop target controls what it does with the file. Use **Check native drag support** to check whether the host can start a drag.
+- **Language** defaults to English. Select **简体中文** to switch the settings and notices to Simplified Chinese.
+- **Drag trigger** defaults to Option on macOS and Ctrl on Windows. Choose a different modifier or enable **Any drag**. With a modifier selected, ordinary drags keep Obsidian's standard behavior.
+- **Check native drag support** shows whether Obsidian exposes the interface the plugin needs. The receiving app controls what it does with the file.
 
 ## Compatibility and data access
 
-The plugin uses an Electron bridge already provided by some Obsidian desktop installations and the file row markup in the Files pane. A host update may change either interface. The current trial has passed simulated Windows path and drag tests. A Windows desktop session is still needed to confirm the receiving application gets the file.
+This preview uses Obsidian's file explorer markup and an Electron bridge provided by the desktop host. The bridge and markup may change in an Obsidian update. The [automated tests](https://github.com/crisxuan/native-file-drag/actions) exercise both platforms using a simulated Electron interface.
 
-For a drag, the plugin checks the selected paths and resolves filesystem links to keep the operation within the vault. It hands paths to Windows only when the configured gesture is used. The plugin stores the language and trigger in the vault's plugin configuration. It has no telemetry, accounts, or network requests of its own.
+The plugin checks that each selected file resolves within the vault before passing its path to the operating system. It stores the language and trigger in the vault's plugin configuration. All processing happens locally. Native File Drag has no telemetry or account requirement.
 
 ## Development
 
-Run `npm test` with Node.js 22 or later. There are no npm dependencies. The root `main.js` is the readable source and the exact file used in the release. The drag icon is embedded in `main.js`.
+Run `npm test` with Node.js 22 or later. There are no npm dependencies. The root `main.js` is the readable source and the exact release file. It includes the drag icon.
 
-Windows File Drag is an independent project distributed under the [MIT license](LICENSE). See the [Electron native drag documentation](https://www.electronjs.org/docs/latest/tutorial/native-file-drag-drop) for the platform API.
+Native File Drag is an independent project distributed under the [MIT license](LICENSE). See the [Electron native drag documentation](https://www.electronjs.org/docs/latest/tutorial/native-file-drag-drop/) for the platform API.

@@ -1,9 +1,9 @@
 {
-  "id": "windows-file-drag",
-  "name": "Windows File Drag",
-  "version": "0.1.0",
+  "id": "native-file-drag",
+  "name": "Native File Drag",
+  "version": "0.2.0",
   "minAppVersion": "1.15.1",
-  "description": "Drag files from the file explorer into Windows apps with a configurable modifier key and English or Simplified Chinese settings.",
+  "description": "Drag files from the file explorer into Finder, File Explorer, and other desktop apps on macOS and Windows.",
   "author": "cxuan",
   "authorUrl": "https://github.com/crisxuan",
   "isDesktopOnly": true

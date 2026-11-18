@@ -46,7 +46,7 @@ function loadPlugin(platform = "win32", modules = {}) {
 
 async function fixture(t, options = {}) {
   const runtime = loadPlugin(options.platform, options.modules);
-  const root = options.root ?? fs.mkdtempSync(path.join(os.tmpdir(), "windows-file-drag-"));
+  const root = options.root ?? fs.mkdtempSync(path.join(os.tmpdir(), "native-file-drag-"));
   const diskPath = options.modules?.["node:path"] ?? path;
   const files = ["2026-11/中文 空格 #1.md", "2026-11/second.md"];
   if (!options.root) {
@@ -59,7 +59,7 @@ async function fixture(t, options = {}) {
   adapter.getBasePath = () => root;
   adapter.getFullPath = (file) => diskPath.join(root, file);
   const calls = [];
-  const icon = { isEmpty: () => false };
+  const icon = { isEmpty: () => Boolean(options.emptyIcon) };
   const window = {
     require(name) {
       if (name === "electron") return { nativeImage: { createFromDataURL: (data) => {
@@ -87,7 +87,8 @@ async function fixture(t, options = {}) {
   };
   const event = {
     target: { closest: () => row },
-    ctrlKey: true,
+    ctrlKey: options.platform !== "darwin",
+    altKey: options.platform === "darwin",
     preventDefault() { this.cancelled = true; },
     stopImmediatePropagation() { this.stopped = true; },
   };
@@ -115,7 +116,8 @@ test("starts in English and persists an immediately applied Chinese selection", 
   f.plugin.tab.display();
   const container = f.plugin.tab.containerEl;
   assert.equal(container.rows[0].name, "Language");
-  assert.equal(container.rows[1].value, "ctrl");
+  assert.equal(container.rows[1].value, "default");
+  assert.equal(container.rows[1].options.default, "Default (Ctrl + drag)");
   container.rows[0].change("zh-CN");
   assert.equal(container.rows[0].name, "语言");
   assert.equal(container.rows[2].description, "原生拖拽接口可用。");
@@ -131,13 +133,16 @@ test("starts in English and persists an immediately applied Chinese selection", 
   assert.equal(reloaded.plugin.tab.containerEl.rows[0].name, "Language");
 });
 
-test("registers a managed Windows drag handler and skips the listener on other desktops", async (t) => {
-  const win = await fixture(t);
-  assert.equal(win.listeners[0].type, "dragstart");
-  assert.equal(win.listeners[0].flags.capture, true);
-  const mac = await fixture(t, { platform: "darwin" });
-  assert.equal(mac.listeners.length, 0);
-  assert.match(mac.plugin.getSupportMessage(), /Windows only/);
+test("registers the managed drag handler only on Windows and macOS", async (t) => {
+  for (const platform of ["win32", "darwin"]) {
+    const f = await fixture(t, { platform });
+    assert.equal(f.listeners.length, 1);
+    assert.equal(f.listeners[0].type, "dragstart");
+    assert.equal(f.listeners[0].flags.capture, true);
+  }
+  const linux = await fixture(t, { platform: "linux" });
+  assert.equal(linux.listeners.length, 0);
+  assert.match(linux.plugin.getSupportMessage(), /available on macOS and Windows/);
 });
 
 test("Ctrl hands the original file and embedded icon to Electron", async (t) => {
@@ -148,6 +153,35 @@ test("Ctrl hands the original file and embedded icon to Electron", async (t) => 
   assert.equal(f.calls[0].icon, f.icon);
   assert.equal(f.calls[0].files, undefined);
   assert.equal(fs.readFileSync(f.calls[0].file, "utf8"), "Test note\n");
+});
+
+test("macOS defaults to Option and supports an explicit Command trigger", async (t) => {
+  const f = await fixture(t, { platform: "darwin" });
+  f.plugin.tab.display();
+  assert.equal(f.plugin.tab.containerEl.rows[1].options.default, "Default (Option + drag)");
+  const handleDrag = f.listeners[0].callback;
+  Object.assign(f.event, { altKey: false, ctrlKey: true });
+  handleDrag(f.event);
+  assert.equal(f.calls.length, 0);
+  Object.assign(f.event, { altKey: true, ctrlKey: false });
+  handleDrag(f.event);
+  assert.equal(f.calls[0].file, path.join(f.root, f.files[0]));
+  assert.equal(f.calls[0].icon, f.icon);
+  await f.plugin.saveSettings({ trigger: "command" });
+  handleDrag(f.event);
+  assert.equal(f.calls.length, 1);
+  Object.assign(f.event, { altKey: false, metaKey: true });
+  handleDrag(f.event);
+  assert.equal(f.calls.length, 2);
+});
+
+test("a Command preference uses the Windows default without changing the stored selection", async (t) => {
+  const f = await fixture(t, { settings: { trigger: "command" } });
+  f.plugin.tab.display();
+  assert.equal(f.plugin.tab.containerEl.rows[1].value, "default");
+  assert.equal(f.plugin.settings.trigger, "command");
+  f.listeners[0].callback(f.event);
+  assert.equal(f.calls.length, 1);
 });
 
 test("ordinary drags, combined modifiers, and other panes stay with Obsidian", async (t) => {
@@ -215,11 +249,19 @@ test("preserves regular Obsidian handling if the source file or native bridge is
   assert.match(noBridge.notices[0], /未提供原生拖拽接口/);
 });
 
+test("an empty drag icon keeps macOS on the normal drag path", async (t) => {
+  const f = await fixture(t, { platform: "darwin", emptyIcon: true });
+  f.listeners[0].callback(f.event);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.event.cancelled, undefined);
+  assert.match(f.notices[0], /does not expose the native drag interface/);
+});
+
 test("reports a native failure in the selected language", async (t) => {
   const f = await fixture(t, { fail: true, settings: { language: "zh-CN", trigger: "alt" } });
   Object.assign(f.event, { ctrlKey: false, altKey: true });
   f.listeners[0].callback(f.event);
   assert.equal(f.event.cancelled, true);
-  assert.match(f.notices[0], /无法发起 Windows 文件拖拽/);
+  assert.match(f.notices[0], /无法发起原生文件拖拽/);
   assert.equal(fs.readFileSync(path.join(f.root, f.files[0]), "utf8"), "Test note\n");
 });
