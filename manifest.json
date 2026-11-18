@@ -1,0 +1,10 @@
+{
+  "id": "windows-file-drag",
+  "name": "Windows File Drag",
+  "version": "0.1.0",
+  "minAppVersion": "1.15.1",
+  "description": "Drag files from the file explorer into Windows apps with a configurable modifier key and English or Simplified Chinese settings.",
+  "author": "cxuan",
+  "authorUrl": "https://github.com/crisxuan",
+  "isDesktopOnly": true
+}
