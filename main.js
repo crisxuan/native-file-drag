@@ -8,6 +8,7 @@ const path = require("node:path");
 const DRAG_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAoCAYAAACfKfiZAAAAU0lEQVR4nGNgGAVowD008z+tMNEO+Pj1J9XxqANGHTDqgFEHjDpg1AFkO0C/fg3ZeHiEwKgDRh0wmgtGHTDqgNFcMOqAUQeMOmBAHDCgQzQjDgAA7TlrOdBtGoIAAAAASUVORK5CYII=";
 const EXPLORER = '.workspace-leaf-content[data-type="file-explorer"]';
 const FILE_ROW = ".nav-file-title[data-path]";
+const nativeDragByWindow = new WeakMap();
 const TRIGGERS = { alt: "altKey", ctrl: "ctrlKey", shift: "shiftKey", command: "metaKey" };
 const IS_MAC = process.platform === "darwin";
 const IS_SUPPORTED = IS_MAC || process.platform === "win32";
@@ -16,7 +17,8 @@ const TEXT = {
   en: {
     language: "Language",
     trigger: "Drag trigger",
-    triggerDescription: "Hold the selected key before dragging a file from the file explorer. Regular drags keep Obsidian's default behavior.",
+    triggerDescription: "With a modifier selected, hold that key before dragging. Any drag also replaces regular Obsidian file drags.",
+    controlHint: "On macOS, Control-click can open the context menu; try Option if it interferes.",
     default: "Default",
     ctrl: IS_MAC ? "Control + drag" : "Ctrl + drag",
     alt: IS_MAC ? "Option + drag" : "Alt + drag",
@@ -27,6 +29,8 @@ const TEXT = {
     ready: "The native drag interface is available.",
     unsupportedPlatform: "Native file drag is available on macOS and Windows.",
     bridgeUnavailable: "This Obsidian installation does not expose the native drag interface.",
+    selectionUnavailable: "The full file selection is unavailable for native drag. Clear the selection to drag one file.",
+    foldersUnsupported: "Native drag supports files only. Deselect folders and try again.",
     fileUnavailable: "A selected file is missing, unavailable, or outside this vault.",
     dragFailed: "Native file drag could not start. Try a regular drag or use Show in system explorer.",
     saveFailed: "Could not save Native File Drag settings.",
@@ -34,7 +38,8 @@ const TEXT = {
   "zh-CN": {
     language: "语言",
     trigger: "拖出方式",
-    triggerDescription: "从文件列表拖拽前，先按住指定按键。普通拖拽保留 Obsidian 的默认行为。",
+    triggerDescription: "选择修饰键后，拖拽前先按住该键。选择「直接拖出」也会接管 Obsidian 的普通文件拖拽。",
+    controlHint: "在 macOS 上，按住 Control 点按可能会打开右键菜单；如果影响拖拽，可改用 Option。",
     default: "默认",
     ctrl: IS_MAC ? "Control + 拖拽" : "Ctrl + 拖拽",
     alt: IS_MAC ? "Option + 拖拽" : "Alt + 拖拽",
@@ -45,6 +50,8 @@ const TEXT = {
     ready: "原生拖拽接口可用。",
     unsupportedPlatform: "原生文件拖出支持 macOS 和 Windows。",
     bridgeUnavailable: "当前 Obsidian 安装未提供原生拖拽接口。",
+    selectionUnavailable: "无法读取完整选集。清除选中状态后可以拖出单个文件。",
+    foldersUnsupported: "原生拖拽仅支持文件。请取消选中文件夹后再试。",
     fileUnavailable: "选中的文件不存在、不可用或位于当前库之外。",
     dragFailed: "无法发起原生文件拖拽。请尝试普通拖拽，或在系统文件管理器中显示文件。",
     saveFailed: "无法保存 Native File Drag 的设置。",
@@ -75,10 +82,23 @@ function isInside(root, candidate) {
     && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-function resolveFiles(vault, draggedPath, selectedPaths) {
+function getDragPaths(row, view) {
+  const draggedPath = row.getAttribute("data-path");
+  // Obsidian keeps selected rows in the tree even when virtual scrolling detaches them.
+  const selection = view?.tree?.selectedDoms;
+  if (typeof selection?.[Symbol.iterator] === "function") {
+    const paths = Array.from(selection, (item) => item?.file?.path);
+    if (paths.includes(draggedPath)) {
+      return paths.every((file) => typeof file === "string" && file.length > 0) ? paths : null;
+    }
+  }
+  // Mounted rows alone cannot tell us whether the selection is complete.
+  return row.classList.contains("is-selected") ? null : [draggedPath];
+}
+
+function resolveFiles(vault, paths) {
   const adapter = vault.adapter;
   if (!(adapter instanceof FileSystemAdapter)) return null;
-  const paths = selectedPaths.includes(draggedPath) ? selectedPaths : [draggedPath];
 
   try {
     const root = path.resolve(adapter.getBasePath());
@@ -101,7 +121,14 @@ function resolveFiles(vault, draggedPath, selectedPaths) {
 }
 
 function getNativeDrag(window) {
+  if (!window) return null;
   try {
+    const cached = nativeDragByWindow.get(window);
+    if (cached) {
+      if (!cached.contents.isDestroyed()) return cached;
+      nativeDragByWindow.delete(window);
+      return null;
+    }
     // Use the bridge already enabled by the host and get the source window's webContents.
     const electron = window.require("electron");
     const remote = window.require("@electron/remote");
@@ -109,8 +136,11 @@ function getNativeDrag(window) {
     if (typeof contents?.startDrag !== "function" || contents.isDestroyed()) return null;
     const icon = electron.nativeImage.createFromDataURL(DRAG_ICON);
     if (icon.isEmpty()) return null;
-    return { contents, icon };
+    const nativeDrag = { contents, icon };
+    nativeDragByWindow.set(window, nativeDrag);
+    return nativeDrag;
   } catch {
+    nativeDragByWindow.delete(window);
     return null;
   }
 }
@@ -140,13 +170,19 @@ class DragSettings extends PluginSettingTab {
         .addOptions({ en: "English", "zh-CN": "简体中文" })
         .setValue(plugin.settings.language)
         .onChange((language) => {
-          plugin.saveSettings({ language });
+          const saved = plugin.saveSettings({ language });
           this.display();
+          return saved;
         }));
+
+    if (!IS_SUPPORTED) {
+      new Setting(containerEl).setDesc(strings.unsupportedPlatform);
+      return;
+    }
 
     new Setting(containerEl)
       .setName(strings.trigger)
-      .setDesc(strings.triggerDescription)
+      .setDesc(IS_MAC ? `${strings.triggerDescription} ${strings.controlHint}` : strings.triggerDescription)
       .addDropdown((dropdown) => dropdown
         .addOptions(triggerOptions)
         .setValue(Object.hasOwn(triggerOptions, plugin.settings.trigger) ? plugin.settings.trigger : "default")
@@ -167,10 +203,32 @@ module.exports = class NativeFileDrag extends Plugin {
     this.pendingSave = Promise.resolve();
     this.addSettingTab(new DragSettings(this.app, this));
 
-    if (IS_SUPPORTED) {
-      const document = this.app.workspace.containerEl.ownerDocument;
-      this.registerDomEvent(document, "dragstart", (event) => this.onDragStart(event), { capture: true });
-    }
+    if (!IS_SUPPORTED) return;
+    const { workspace } = this.app;
+    this.dragDocuments = new Map();
+    this.handleDragStart = (event) => this.onDragStart(event);
+    this.register(() => {
+      for (const window of this.dragDocuments.keys()) this.unregisterDragWindow(window);
+    });
+    this.registerEvent(workspace.on("window-open", (_workspaceWindow, window) => this.registerDragDocument(window.document)));
+    this.registerEvent(workspace.on("window-close", (_workspaceWindow, window) => this.unregisterDragWindow(window)));
+    this.registerDragDocument(workspace.containerEl.ownerDocument);
+    workspace.iterateAllLeaves((leaf) => this.registerDragDocument(leaf.containerEl.ownerDocument));
+  }
+
+  registerDragDocument(document) {
+    const window = document.defaultView;
+    if (!window || this.dragDocuments.has(window)) return;
+    document.addEventListener("dragstart", this.handleDragStart, true);
+    this.dragDocuments.set(window, document);
+  }
+
+  unregisterDragWindow(window) {
+    const document = this.dragDocuments.get(window);
+    if (!document) return;
+    document.removeEventListener("dragstart", this.handleDragStart, true);
+    this.dragDocuments.delete(window);
+    nativeDragByWindow.delete(window);
   }
 
   get strings() {
@@ -194,19 +252,34 @@ module.exports = class NativeFileDrag extends Plugin {
 
   onDragStart(event) {
     if (!matchesTrigger(event, this.settings.trigger)) return;
-    const row = event.target?.closest?.(FILE_ROW);
+    const target = event.target;
+    if (target?.isContentEditable) return;
+    const row = target?.closest?.(FILE_ROW);
     const explorer = row?.closest(EXPLORER);
-    if (!explorer) return;
+    if (!explorer || row.classList.contains("is-being-renamed")) return;
 
-    const selected = [...explorer.querySelectorAll(`${FILE_ROW}.is-selected`)]
-      .map((node) => node.getAttribute("data-path"));
-    const files = resolveFiles(this.app.vault, row.getAttribute("data-path"), selected);
+    const view = this.app.workspace.getLeavesOfType("file-explorer")
+      .find((leaf) => leaf.view.containerEl === explorer)?.view;
+    if (view?.fileBeingRenamed) return;
+
+    const paths = getDragPaths(row, view);
+    if (!paths) {
+      new Notice(this.strings.selectionUnavailable);
+      return;
+    }
+    const { vault } = this.app;
+    if (paths.some((file) => file && vault.getFolderByPath(file))) {
+      new Notice(this.strings.foldersUnsupported);
+      return;
+    }
+    const files = resolveFiles(vault, paths);
     if (!files?.length) {
       new Notice(this.strings.fileUnavailable);
       return;
     }
 
-    const nativeDrag = getNativeDrag(row.ownerDocument.defaultView);
+    const window = row.ownerDocument.defaultView;
+    const nativeDrag = getNativeDrag(window);
     if (!nativeDrag) {
       new Notice(this.strings.bridgeUnavailable);
       return;
@@ -221,6 +294,7 @@ module.exports = class NativeFileDrag extends Plugin {
       if (files.length > 1) item.files = files;
       contents.startDrag(item);
     } catch {
+      nativeDragByWindow.delete(window);
       new Notice(this.strings.dragFailed);
     }
   }

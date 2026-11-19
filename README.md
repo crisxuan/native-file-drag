@@ -13,12 +13,14 @@ Drag Markdown notes and attachments from Obsidian's file explorer to Finder, Fil
 ## Settings
 
 - **Language** defaults to English. Select **简体中文** to switch the settings and notices to Simplified Chinese.
-- **Drag trigger** defaults to Option on macOS and Ctrl on Windows. Choose a different modifier or enable **Any drag**. With a modifier selected, ordinary drags keep Obsidian's standard behavior.
+- **Drag trigger** defaults to Option on macOS and Ctrl on Windows. Choose a different modifier or enable **Any drag**, which also replaces regular Obsidian file drags. On macOS, Control-click can open the context menu; use Option if it interferes.
 - **Check native drag support** shows whether Obsidian exposes the interface the plugin needs. The receiving app controls what it does with the file.
 
 ## Compatibility and data access
 
-This preview uses Obsidian's file explorer markup and an Electron bridge provided by the desktop host. The bridge and markup may change in an Obsidian update. The [automated tests](https://github.com/crisxuan/native-file-drag/actions) exercise both platforms using a simulated Electron interface.
+Selected files can be dragged together even when some have scrolled out of view. If the selection includes a folder or the plugin cannot read the full selection, the plugin shows a notice and leaves the drag to Obsidian. Deselect folders or clear the selection to try again. The plugin also leaves inline rename gestures to Obsidian.
+
+This preview uses Obsidian's file explorer internals and an Electron bridge provided by the desktop host. Both may change in an Obsidian update. The [automated tests](https://github.com/crisxuan/native-file-drag/actions) exercise both platforms using a simulated Electron interface.
 
 The plugin checks that each selected file resolves within the vault before passing its path to the operating system. It stores the language and trigger in the vault's plugin configuration. All processing happens locally. Native File Drag has no telemetry or account requirement.
 

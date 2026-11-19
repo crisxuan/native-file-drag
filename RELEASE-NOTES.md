@@ -1,4 +1,10 @@
-# Native File Drag 0.2.0
+# Native File Drag 0.2.1
+
+- Include selected files that have scrolled out of view. If the full selection is unavailable or includes a folder, show a notice and leave the drag to Obsidian.
+- Listen for file drags in popout windows, including windows open when the plugin is enabled, and leave inline rename gestures to Obsidian.
+- Clarify the macOS Control-click conflict and the behavior of Any drag. Hide unavailable drag controls on Linux and keep the language selector.
+
+## 0.2.0
 
 One preview build for Obsidian desktop 1.15.1 or later on macOS and Windows.
 
